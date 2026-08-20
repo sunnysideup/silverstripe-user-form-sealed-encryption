@@ -6,7 +6,9 @@
 
 3. save the `B key` in a very, very secure place NOT on the server.
 
-4. submissions will be saved encrypted, with NO way to encrypt them without the B key.
+4. submissions will now be saved encrypted, with NO way to encrypt them without the `B key`.
+
+5. You can use the config below to add exceptions.
 
 ## config
 
@@ -25,8 +27,6 @@ Sunnysideup\UserFormSealedEncryption\Extensions\SubmittedFormFieldExtension:
     FooBar\ClassB
 ```
 
-
 ## to encrypt
 
-Download database.
-Write a manual script to decrypt data with `B key`.
+To decrypt you can use the `decryptor/index.html` file included in this module.

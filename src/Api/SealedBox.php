@@ -68,7 +68,7 @@ final class SealedBox
      *
      * @return array{public: string, secret: string} Both base64-encoded.
      */
-    public static function generateKeypair(): array
+    public static function generate_keypair(): array
     {
         $keypair = sodium_crypto_box_keypair();
 
@@ -97,14 +97,14 @@ final class SealedBox
      * secret key can read it.
      *
      * @param string $plaintext    The data to protect.
-     * @param string $publicKeyB64 Key A, base64 (as produced by generateKeypair()).
+     * @param string $publicKeyB64 Key A, base64 (as produced by generate_keypair()).
      * @return string              Base64 ciphertext, safe to store in a DB.
      *
      * @throws InvalidArgumentException If the public key is malformed.
      */
     public static function encrypt(string $plaintext, string $publicKeyB64): string
     {
-        $publicKey = self::decodeKey(
+        $publicKey = self::decode_key(
             $publicKeyB64,
             SODIUM_CRYPTO_BOX_PUBLICKEYBYTES,
             'public'
@@ -127,7 +127,7 @@ final class SealedBox
      * only ever need to supply Key B.
      *
      * @param string $ciphertextB64 Base64 ciphertext from encrypt().
-     * @param string $secretKeyB64  Key B, base64 (from generateKeypair()).
+     * @param string $secretKeyB64  Key B, base64 (from generate_keypair()).
      * @return string               The recovered plaintext.
      *
      * @throws InvalidArgumentException If a key or the ciphertext is malformed.
@@ -135,7 +135,7 @@ final class SealedBox
      */
     public static function decrypt(string $ciphertextB64, string $secretKeyB64): string
     {
-        $secretKey = self::decodeKey(
+        $secretKey = self::decode_key(
             $secretKeyB64,
             SODIUM_CRYPTO_BOX_SECRETKEYBYTES,
             'secret'
@@ -173,7 +173,7 @@ final class SealedBox
     /**
      * Decode and validate a base64 key to raw bytes of the expected length.
      */
-    private static function decodeKey(string $keyB64, int $expectedBytes, string $label): string
+    private static function decode_key(string $keyB64, int $expectedBytes, string $label): string
     {
         try {
             $raw = sodium_base642bin($keyB64, self::B64_VARIANT);

@@ -1,1 +1,4 @@
 # see https://docs.silverstripe.org/en/developer_guides/configuration/configuration/
+SilverStripe\UserForms\Model\Submission\SubmittedFormField:
+  extensions:
+    - Sunnysideup\UserFormSealedEncryption\Extensions\SubmittedFormFieldExtension

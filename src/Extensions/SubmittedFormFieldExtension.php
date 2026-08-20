@@ -18,8 +18,6 @@ class SubmittedFormFieldExtension extends Extension
     private static array $field_types_to_encrypt = [];
     private static array $field_types_not_to_encrypt = [];
 
-
-
     public function onPopulationFromField(EditableFormField $field)
     {
         $owner = $this->getOwner();
@@ -48,7 +46,7 @@ class SubmittedFormFieldExtension extends Extension
         if (!empty($owner->config()->get('field_types_to_encrypt')) && !in_array($fieldClass, $owner->config()->get('field_types_to_encrypt'))) {
             return;
         }
-
-        $submittedFormField->Value = SealedBox::encrypt($submittedFormField->Value, $publicKeyB64);
+        $value = (string) $submittedFormField->Value;
+        $submittedFormField->Value = SealedBox::encrypt($value, $publicKeyB64);
     }
 }

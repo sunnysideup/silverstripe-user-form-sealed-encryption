@@ -23,9 +23,29 @@ use RuntimeException;
  * secret of any kind. The public key is all it needs to encrypt.
  *
  *
+ * LENGTH HIDING (padding)
+ * -----------------------
+ * A sealed box does not pad, so ciphertext length = plaintext length + 48.
+ * For short, low-entropy fields (yes/no, a checkbox "1", etc.) that length
+ * alone can betray the value. To stop that, we frame every plaintext as:
+ *
+ *     [ 4-byte big-endian length ][ plaintext ][ zero padding ]
+ *
+ * and pad the whole thing up to the next multiple of PAD_BLOCK. Because the
+ * true length is stored explicitly in the prefix, decryption takes exactly
+ * that many bytes — the padding is never guessed at, so ANY plaintext
+ * (including one containing or ending in the padding byte) round-trips
+ * perfectly. Every value up to PAD_BLOCK - 4 bytes produces an identical
+ * ciphertext length, so short fields become indistinguishable by size.
+ *
+ * NOTE: this framing is a fixed format. If you have already stored data
+ * encrypted with a different padding scheme, it will NOT decrypt with this
+ * version — migrate before switching, or version your stored records.
+ *
+ *
  * THE THREE OPERATIONS
  * --------------------
- *   1. generateKeypair()  → run ONCE, OFF the server. Produces A and B.
+ *   1. generate_keypair() → run ONCE, OFF the server. Produces A and B.
  *   2. encrypt()          → runs ON the server. Needs only Key A (public).
  *   3. decrypt()          → runs OFF the server. Needs Key B (secret).
  *
@@ -40,13 +60,6 @@ use RuntimeException;
  *     you must truly protect. Losing B means the data is unrecoverable
  *     (that is the point — there is no backdoor).
  *
- *
- * DATA FORMAT
- * -----------
- * All keys and ciphertext are exchanged as base64 strings using the
- * ORIGINAL variant. Keep the variant consistent — it is baked into the
- * constants below so you don't have to think about it.
- *
  * Requires: PHP 8.3+ with libsodium (bundled in core since PHP 7.2 — no
  * extension to install).
  */
@@ -55,16 +68,23 @@ final class SealedBox
     /** Base64 variant used for every key and ciphertext this class emits. */
     private const B64_VARIANT = SODIUM_BASE64_VARIANT_ORIGINAL;
 
+    /**
+     * Plaintext is padded up to the next multiple of this many bytes.
+     * All values up to (PAD_BLOCK - 4) bytes share one ciphertext length,
+     * so they cannot be told apart by size. 256 comfortably covers emails,
+     * phone numbers, names and yes/no fields in a single block.
+     */
+    private const PAD_BLOCK = 256;
+
+    /** Bytes used for the length prefix (big-endian uint32 => up to 4 GB). */
+    private const LENGTH_PREFIX_BYTES = 4;
+
     // -------------------------------------------------------------------
     // 1. KEY GENERATION  (run ONCE, OFF the server)
     // -------------------------------------------------------------------
 
     /**
      * Generate a fresh keypair.
-     *
-     * Run this once on a trusted, offline-ish machine (your laptop). Put the
-     * returned 'public' value on the server; store 'secret' somewhere the
-     * server can never see it.
      *
      * @return array{public: string, secret: string} Both base64-encoded.
      */
@@ -80,7 +100,6 @@ final class SealedBox
             'secret' => sodium_bin2base64($secret, self::B64_VARIANT),
         ];
 
-        // Wipe the raw key material from memory as soon as we're done.
         sodium_memzero($keypair);
         sodium_memzero($public);
         sodium_memzero($secret);
@@ -94,10 +113,10 @@ final class SealedBox
 
     /**
      * Encrypt a plaintext string so that ONLY the holder of the matching
-     * secret key can read it.
+     * secret key can read it. The plaintext is length-hidden by padding.
      *
      * @param string $plaintext    The data to protect.
-     * @param string $publicKeyB64 Key A, base64 (as produced by generate_keypair()).
+     * @param string $publicKeyB64 Key A, base64 (from generate_keypair()).
      * @return string              Base64 ciphertext, safe to store in a DB.
      *
      * @throws InvalidArgumentException If the public key is malformed.
@@ -110,7 +129,10 @@ final class SealedBox
             'public'
         );
 
-        $ciphertext = sodium_crypto_box_seal($plaintext, $publicKey);
+        $padded     = self::pad($plaintext);
+        $ciphertext = sodium_crypto_box_seal($padded, $publicKey);
+
+        sodium_memzero($padded);
 
         return sodium_bin2base64($ciphertext, self::B64_VARIANT);
     }
@@ -121,10 +143,6 @@ final class SealedBox
 
     /**
      * Decrypt ciphertext produced by encrypt().
-     *
-     * Run this OFF the server, on the machine that holds the secret key.
-     * The public key is derived from the secret key automatically, so you
-     * only ever need to supply Key B.
      *
      * @param string $ciphertextB64 Base64 ciphertext from encrypt().
      * @param string $secretKeyB64  Key B, base64 (from generate_keypair()).
@@ -143,27 +161,70 @@ final class SealedBox
 
         $ciphertext = sodium_base642bin($ciphertextB64, self::B64_VARIANT);
 
-        // Sealed boxes need the FULL keypair to open. We rebuild the public
-        // half from the secret key, then assemble the keypair.
         $publicKey = sodium_crypto_box_publickey_from_secretkey($secretKey);
         $keypair   = sodium_crypto_box_keypair_from_secretkey_and_publickey(
             $secretKey,
             $publicKey
         );
 
-        $plaintext = sodium_crypto_box_seal_open($ciphertext, $keypair);
+        $padded = sodium_crypto_box_seal_open($ciphertext, $keypair);
 
-        // Clean up secret material regardless of outcome.
         sodium_memzero($secretKey);
         sodium_memzero($keypair);
 
-        if ($plaintext === false) {
+        if ($padded === false) {
             throw new RuntimeException(
                 'Decryption failed: wrong secret key or the data was tampered with.'
             );
         }
 
+        $plaintext = self::unpad($padded);
+        sodium_memzero($padded);
+
         return $plaintext;
+    }
+
+    // -------------------------------------------------------------------
+    // Padding helpers (length hiding)
+    // -------------------------------------------------------------------
+
+    /**
+     * Frame with a 4-byte length prefix, then zero-pad up to the next
+     * multiple of PAD_BLOCK. The prefix makes unpadding exact and lossless
+     * for arbitrary binary plaintext.
+     */
+    private static function pad(string $plaintext): string
+    {
+        $framed = pack('N', strlen($plaintext)) . $plaintext;
+
+        $blocks    = (int) ceil(strlen($framed) / self::PAD_BLOCK);
+        $targetLen = max(1, $blocks) * self::PAD_BLOCK;
+
+        // The padding bytes are encrypted, so their content never leaks;
+        // zero bytes are fine and cheap.
+        return str_pad($framed, $targetLen, "\0", STR_PAD_RIGHT);
+    }
+
+    /**
+     * Reverse pad(): read the length prefix and return exactly that many
+     * bytes of plaintext.
+     */
+    private static function unpad(string $padded): string
+    {
+        if (strlen($padded) < self::LENGTH_PREFIX_BYTES) {
+            throw new RuntimeException('Malformed padded plaintext (too short for length prefix).');
+        }
+
+        /** @var array{1: int} $unpacked */
+        $unpacked = unpack('N', substr($padded, 0, self::LENGTH_PREFIX_BYTES));
+        $length   = $unpacked[1];
+
+        $available = strlen($padded) - self::LENGTH_PREFIX_BYTES;
+        if ($length < 0 || $length > $available) {
+            throw new RuntimeException('Corrupt length prefix in decrypted data.');
+        }
+
+        return substr($padded, self::LENGTH_PREFIX_BYTES, $length);
     }
 
     // -------------------------------------------------------------------

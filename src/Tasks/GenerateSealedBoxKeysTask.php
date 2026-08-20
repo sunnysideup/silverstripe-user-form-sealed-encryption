@@ -108,7 +108,7 @@ final class GenerateSealedBoxKeysTask extends BuildTask
 
         $output->writeln('<comment>Next steps:</comment>');
         $output->writeln(' 1. Add the PUBLIC key to your environment, e.g. in .env:');
-        $output->writeln('       SEALED_BOX_PUBLIC_KEY="' . $keys['public'] . '"');
+        $output->writeln('       SS_SEALED_BOX_PUBLIC_KEY="' . $keys['public'] . '"');
         $output->writeln(' 2. Move the SECRET key to a safe place the server cannot reach');
         $output->writeln('    (offline vault, password manager, hardware token).');
         $output->writeln(' 3. NEVER commit the secret key. NEVER store it on this server.');

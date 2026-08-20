@@ -1,6 +1,6 @@
 # tl;dr
 
-1. generate the `A` and `B` keys, locally, from the comand line.
+1. generate the `A` and `B` keys, locally, from the comand line: `vendor/bin/sake tasks:generate-sealed-box-keys`
 
 2. save the `A key` on the server, in the `.env` file: `SS_SEALED_BOX_PUBLIC_KEY`
 

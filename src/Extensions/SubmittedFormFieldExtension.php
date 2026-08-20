@@ -14,9 +14,13 @@ class SubmittedFormFieldExtension extends Extension
     private static bool $no_encryption_at_all = false;
 
     private static array $fields_not_to_encrypt = [];
+
     private static array $fields_to_encrypt = [];
+
     private static array $field_types_to_encrypt = [];
+
     private static array $field_types_not_to_encrypt = [];
+
 
     public function onPopulationFromField(EditableFormField $field)
     {

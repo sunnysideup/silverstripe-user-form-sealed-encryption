@@ -79,7 +79,9 @@ class SubmittedFormFieldExtension extends Extension
             return;
         }
         $owner = $this->getOwner();
-        $this->plainValueToRestore = (string) $owner->Value;
+        // If an earlier write failed between before/after, Value still holds
+        // ciphertext; the stashed plain value is the truth. Never encrypt twice.
+        $this->plainValueToRestore ??= (string) $owner->Value;
         $owner->Value = SealedBox::encrypt($this->plainValueToRestore, $publicKeyB64);
     }
 
@@ -89,6 +91,7 @@ class SubmittedFormFieldExtension extends Extension
             $this->getOwner()->Value = $this->plainValueToRestore;
             $this->plainValueToRestore = null;
         }
-        $this->pendingEncryption = false;
+        // Deliberately NOT resetting $pendingEncryption: this in-memory object
+        // holds plain text again, so any further write() must encrypt again.
     }
 }

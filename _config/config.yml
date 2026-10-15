@@ -2,3 +2,15 @@
 SilverStripe\UserForms\Model\Submission\SubmittedFormField:
   extensions:
     - Sunnysideup\UserFormSealedEncryption\Extensions\SubmittedFormFieldExtension
+---
+Name: user-form-sealed-encryption-cms
+---
+SilverStripe\UserForms\Model\UserDefinedForm:
+  extensions:
+    - Sunnysideup\UserFormSealedEncryption\Extensions\UserFormCmsExtension
+DNADesign\ElementalUserForms\Model\ElementForm:
+  extensions:
+    - Sunnysideup\UserFormSealedEncryption\Extensions\UserFormCmsExtension
+SilverStripe\Control\Director:
+  rules:
+    'admin/sealed-box-decryptor': 'Sunnysideup\UserFormSealedEncryption\Control\DecryptorDownloadController'

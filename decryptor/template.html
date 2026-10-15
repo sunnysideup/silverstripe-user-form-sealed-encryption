@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'">
+<title>Sealed Box Decryptor</title>
+<style>
+body{font:16px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#222}
+h1{margin-bottom:.25rem}
+label{display:block;font-weight:600;margin:1.25rem 0 .25rem}
+textarea,input[type=password],input[type=text]{width:100%;box-sizing:border-box;font:14px/1.4 ui-monospace,monospace;padding:.5rem;border:1px solid #888;border-radius:4px}
+textarea{min-height:12rem}
+button{font:inherit;padding:.5rem 1rem;margin:.75rem .5rem 0 0;border:0;border-radius:4px;background:#145;color:#fff;cursor:pointer}
+button.secondary{background:#666}
+#status{margin-top:1rem;font-weight:600}
+.error{color:#a00}.ok{color:#060}
+.note{background:#f3f3f3;padding:.75rem 1rem;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>Sealed Box Decryptor</h1>
+<p class="note">Everything happens in your browser. Nothing is uploaded and this page makes no network requests.
+Your private key (Key B) is held in memory only, until you clear it or close this page.
+Use this file on a trusted computer.</p>
+
+<label for="key">Private key (Key B, base64)</label>
+<input type="password" id="key" autocomplete="off" spellcheck="false">
+<input type="file" id="keyfile" accept=".txt,.key,text/plain" aria-label="Load private key from file">
+
+<label for="input">Encrypted data</label>
+<p style="margin:0">Paste an encrypted value, an email, or a whole CSV export. Every encrypted value found is decrypted in place.</p>
+<textarea id="input" spellcheck="false"></textarea>
+<input type="file" id="datafile" aria-label="Load data from file">
+
+<button id="go">Decrypt</button>
+<button id="download" class="secondary" disabled>Download result</button>
+<button id="clear" class="secondary">Clear everything</button>
+
+<div id="status" role="status"></div>
+
+<label for="output">Result</label>
+<textarea id="output" readonly spellcheck="false"></textarea>
+
+<script>
+/*__NACL__*/
+</script>
+<script>
+(function(){
+var modules={};
+function def(name,fn){var m={exports:{}};fn(m,m.exports);modules[name]=m.exports}
+/*__BLAKE__*/
+var blake=modules.blake2b;
+
+var PAD_PREFIX=4;
+function b64decode(s){
+  s=s.replace(/\s+/g,'');
+  var bin=atob(s),out=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
+  return out;
+}
+function concat(a,b){var o=new Uint8Array(a.length+b.length);o.set(a);o.set(b,a.length);return o}
+
+// Mirrors SealedBox::decrypt() in PHP (libsodium crypto_box_seal_open + length-prefixed padding).
+function openSealed(cipherB64,secretKey,publicKey){
+  var c=b64decode(cipherB64);
+  if(c.length<32+nacl.box.overheadLength)return null;
+  var epk=c.subarray(0,32),box=c.subarray(32);
+  var nonce=blake.blake2b(concat(epk,publicKey),null,24);
+  var padded=nacl.box.open(box,nonce,epk,secretKey);
+  if(!padded||padded.length<PAD_PREFIX)return null;
+  var len=((padded[0]<<24)|(padded[1]<<16)|(padded[2]<<8)|padded[3])>>>0;
+  if(len>padded.length-PAD_PREFIX)return null;
+  return new TextDecoder('utf-8').decode(padded.subarray(PAD_PREFIX,PAD_PREFIX+len));
+}
+
+var $=function(id){return document.getElementById(id)};
+function status(msg,cls){var s=$('status');s.textContent=msg;s.className=cls||''}
+
+function readText(file,cb){var r=new FileReader();r.onload=function(){cb(String(r.result))};r.readAsText(file)}
+$('keyfile').onchange=function(e){if(e.target.files[0])readText(e.target.files[0],function(t){$('key').value=t.trim()})};
+$('datafile').onchange=function(e){if(e.target.files[0])readText(e.target.files[0],function(t){$('input').value=t})};
+
+$('go').onclick=function(){
+  var sk;
+  try{
+    sk=b64decode($('key').value);
+    if(sk.length!==32)throw 0;
+  }catch(e){status('The private key is not valid (expected 32 bytes, base64).','error');return}
+  var pk=nacl.scalarMult.base(sk);
+  // Ciphertexts are at least 32+16+256 bytes => 408+ base64 characters.
+  var ok=0,failed=0;
+  var out=$('input').value.replace(/[A-Za-z0-9+\/]{380,}={0,2}/g,function(m){
+    try{
+      var p=openSealed(m,sk,pk);
+      if(p!==null){ok++;return p}
+    }catch(e){}
+    failed++;return m;
+  });
+  $('output').value=out;
+  $('download').disabled=!out;
+  if(ok===0&&failed===0)status('No encrypted values found in the data.','error');
+  else if(failed)status(ok+' value(s) decrypted, '+failed+' could not be decrypted (wrong key or damaged data).','error');
+  else status(ok+' value(s) decrypted.','ok');
+};
+
+$('download').onclick=function(){
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([$('output').value],{type:'text/plain'}));
+  a.download='decrypted.txt';a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+};
+$('clear').onclick=function(){
+  ['key','input','output','keyfile','datafile'].forEach(function(i){$(i).value=''});
+  $('download').disabled=true;status('Cleared.');
+};
+})();
+</script>
+</body>
+</html>

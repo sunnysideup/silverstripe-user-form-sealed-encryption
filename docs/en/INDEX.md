@@ -17,6 +17,8 @@ You can customise the encryption like this:
 ```yml
 Sunnysideup\UserFormSealedEncryption\Extensions\SubmittedFormFieldExtension:
   no_encryption_at_all: true
+  # emails contain readable values; only the database copy is encrypted
+  encrypt_after_email: true
   fields_to_encrypt:
     - FieldNameA
   fields_not_to_encrypt:

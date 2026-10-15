@@ -21,6 +21,16 @@ class SubmittedFormFieldExtension extends Extension
 
     private static array $field_types_not_to_encrypt = [];
 
+    /**
+     * If true, the value is encrypted only for the database write.
+     * The in-memory value stays plain text, so emails sent afterwards
+     * contain readable content. Plain text is never stored.
+     */
+    private static bool $encrypt_after_email = false;
+
+    private ?string $plainValueToRestore = null;
+
+    private bool $pendingEncryption = false;
 
     public function onPopulationFromField(EditableFormField $field)
     {
@@ -50,7 +60,35 @@ class SubmittedFormFieldExtension extends Extension
         if (!empty($owner->config()->get('field_types_to_encrypt')) && !in_array($fieldClass, $owner->config()->get('field_types_to_encrypt'))) {
             return;
         }
+        if ($owner->config()->get('encrypt_after_email')) {
+            // encrypted in onBeforeWrite, restored in onAfterWrite
+            $this->pendingEncryption = true;
+            return;
+        }
         $value = (string) $submittedFormField->Value;
         $submittedFormField->Value = SealedBox::encrypt($value, $publicKeyB64);
+    }
+
+    public function onBeforeWrite()
+    {
+        if (!$this->pendingEncryption) {
+            return;
+        }
+        $publicKeyB64 = Environment::getEnv('SS_SEALED_BOX_PUBLIC_KEY');
+        if (!$publicKeyB64) {
+            return;
+        }
+        $owner = $this->getOwner();
+        $this->plainValueToRestore = (string) $owner->Value;
+        $owner->Value = SealedBox::encrypt($this->plainValueToRestore, $publicKeyB64);
+    }
+
+    public function onAfterWrite()
+    {
+        if ($this->plainValueToRestore !== null) {
+            $this->getOwner()->Value = $this->plainValueToRestore;
+            $this->plainValueToRestore = null;
+        }
+        $this->pendingEncryption = false;
     }
 }

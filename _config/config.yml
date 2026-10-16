@@ -4,6 +4,8 @@ SilverStripe\UserForms\Model\Submission\SubmittedFormField:
     - Sunnysideup\UserFormSealedEncryption\Extensions\SubmittedFormFieldExtension
 ---
 Name: user-form-sealed-encryption-cms
+Before:
+  - '#adminroutes'
 ---
 SilverStripe\UserForms\Model\UserDefinedForm:
   extensions:

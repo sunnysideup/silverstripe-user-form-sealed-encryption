@@ -23,10 +23,11 @@ class UserFormCmsExtension extends Extension
             'Root.Submissions',
             LiteralField::create(
                 'SealedBoxDecryptorLink',
-                '<p class="message notice">Submissions are encrypted. '
-                . '<a href="' . htmlspecialchars($url) . '" download>Download the decryptor</a>, '
+                '<p class="message notice">Submissions are encrypted in such a way that only someone with the private key can read them.
+                The private key is not uploaded or stored anywhere on the site. '
+                . '<br /><a href="' . htmlspecialchars($url) . '" download>Download the decryptor</a>, '
                 . 'open it on your computer, and paste in your private key and the exported data (e.g. CSV) to read it. '
-                . 'Nothing is uploaded.</p>'
+                . 'Nothing will be uploaded in this process.</p>'
             ),
             'Submissions'
         );
